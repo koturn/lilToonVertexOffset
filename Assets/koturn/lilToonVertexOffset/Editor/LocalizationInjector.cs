@@ -1,0 +1,403 @@
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Reflection;
+using System.Text;
+using UnityEditor;
+using UnityEngine;
+using lilToon;
+
+
+namespace Koturn.LilToonVertexOffset.Editor
+{
+    /// <summary>
+    /// Additional Portable Object file loader for <see cref="lilLanguageManager"/>.
+    /// </summary>
+    internal static class LocalizationInjector
+    {
+        /// <summary>
+        /// Fallback language name.
+        /// </summary>
+        private const string FallbackLocaleCode = "en-US";
+
+        /// <summary>
+        /// Cached reference to <c>lilLanguageManager.loc</c>.
+        /// </summary>
+        private static readonly Dictionary<string, string> _loc = GetLoc();
+        /// <summary>
+        /// Cached reference to <c>lilLanguageManager.loc</c>.
+        /// </summary>
+        private static readonly Dictionary<string, LocalizationCache> _cacheDict = new Dictionary<string, LocalizationCache>();
+
+
+        /// <summary>
+        /// Load Portable Object file and inject its result to the language directory in <see cref="lilLanguageManager"/>.
+        /// </summary>
+        /// <param name="guidPoDir">GUID of portable object directory.</param>
+        public static void Load(string guidPoDir)
+        {
+            Load(guidPoDir, lilLanguageManager.langSet.languageName);
+        }
+
+        /// <summary>
+        /// Load Portable Object file and inject its result to the language directory in <see cref="lilLanguageManager"/>.
+        /// </summary>
+        /// <param name="guidPoDir">GUID of portable object directory.</param>
+        /// <param name="langName">Target language name.</param>
+        public static void Load(string guidPoDir, string langName)
+        {
+            var dirAssetPath = AssetDatabase.GUIDToAssetPath(guidPoDir);
+            var localeCode = ToLocaleCode(langName);
+
+            //
+            // Update fallback cache if needed.
+            //
+            if (localeCode != FallbackLocaleCode)
+            {
+                var fallbackFileAssetPath = dirAssetPath + "/" + FallbackLocaleCode + ".po";
+
+                if (!_cacheDict.TryGetValue(FallbackLocaleCode, out var fallbackCache))
+                {
+                    fallbackCache = new LocalizationCache(Path.GetFullPath(fallbackFileAssetPath));
+                }
+                else if (fallbackCache.LastWriteTime == new FileInfo(fallbackFileAssetPath).LastWriteTime)
+                {
+                    fallbackCache = null;
+                }
+
+                if (fallbackCache != null && File.Exists(fallbackFileAssetPath))
+                {
+                    LoadPortableObject(fallbackFileAssetPath, fallbackCache.LocalizationDict);
+                    _cacheDict[FallbackLocaleCode] = fallbackCache;
+                }
+            }
+
+            var fileAssetPath = dirAssetPath + "/" + localeCode + ".po";
+
+            //
+            // Search cache.
+            //
+            if (_cacheDict.TryGetValue(localeCode, out var cache)
+                && cache.LastWriteTime == new FileInfo(fileAssetPath).LastWriteTime
+                && cache.FilePath == Path.GetFullPath(fileAssetPath))
+            {
+                InjectLocalizationDict(cache.LocalizationDict);
+                return;
+            }
+
+            //
+            // Create cache and inject it.
+            //
+            if (File.Exists(fileAssetPath))
+            {
+                var newCache = new LocalizationCache(Path.GetFullPath(fileAssetPath));
+                LoadPortableObject(fileAssetPath, newCache.LocalizationDict);
+                InjectLocalizationDict(newCache.LocalizationDict);
+                _cacheDict[localeCode] = newCache;
+            }
+            else if (_cacheDict.TryGetValue(FallbackLocaleCode, out var fallbackCache))
+            {
+                InjectLocalizationDict(fallbackCache.LocalizationDict);
+            }
+        }
+
+
+        /// <summary>
+        /// Get <see cref="lilLanguageManager"/>.loc using reflection.
+        /// </summary>
+        /// <returns>Localization dictionary in <see cref="lilLanguageManager"/> class.</returns>
+        private static Dictionary<string, string> GetLoc()
+        {
+            return (Dictionary<string, string>)typeof(lilLanguageManager)
+                .GetField(
+                    "loc",
+                    BindingFlags.NonPublic | BindingFlags.Static)
+                .GetValue(null);
+        }
+
+        /// <summary>
+        /// Convert language name to locale code.
+        /// </summary>
+        /// <param name="langName">Target language name.</param>
+        /// <returns>Locale code.</returns>
+        private static string ToLocaleCode(string langName)
+        {
+            switch (langName)
+            {
+                case "English":
+                case "en-US":
+                case "en_US":
+                    return "en-US";
+                case "Japanese":
+                case "ja-JP":
+                case "ja_JP":
+                    return "ja-JP";
+                case "Korean":
+                case "ko-KR":
+                case "ko_KR":
+                    return "ko-KR";
+                case "Chinese Simplified":
+                case "zh-Hans":
+                case "zh_Hans":
+                    return "zh-Hans";
+                case "Chinese Traditional":
+                case "zh-Hant":
+                case "zh_Hant":
+                    return "zh-Hant";
+                default:
+                    return FallbackLocaleCode;
+            }
+        }
+
+        /// <summary>
+        /// Load portable object to the specified dictionary.
+        /// </summary>
+        /// <param name="fileAssetPath">Portable Object asset file path.</param>
+        /// <param name="localizationDict">Localization dictionary to load.</param>
+        /// <exception cref="FileNotFoundException">Thrown when <paramref name="fileAssetPath"/> is not found.</exception>
+        private static void LoadPortableObject(string fileAssetPath, Dictionary<string, string> localizationDict)
+        {
+            if (!File.Exists(fileAssetPath))
+            {
+                throw new FileNotFoundException("Portable object file not found", fileAssetPath);
+            }
+
+            var localizationAsset = AssetDatabase.LoadAssetAtPath<LocalizationAsset>(fileAssetPath);
+            var msgIdList = ReadMsgIds(fileAssetPath);
+
+            localizationDict.Clear();
+            foreach (var msgId in msgIdList)
+            {
+                localizationDict[msgId] = localizationAsset.GetLocalizedString(msgId);
+            }
+        }
+
+        /// <summary>
+        /// Inject localization dictionary to <see cref="_loc"/>.
+        /// </summary>
+        /// <param name="localizationDict">Localization dictionary.</param>
+        private static void InjectLocalizationDict(Dictionary<string, string> localizationDict)
+        {
+            var loc = _loc;
+            if (_cacheDict.TryGetValue(FallbackLocaleCode, out var fallbackCache))
+            {
+                var fallbackLocalizationDict = fallbackCache.LocalizationDict;
+                foreach (var kv in localizationDict)
+                {
+                    string val;
+                    if (kv.Key != kv.Value)
+                    {
+                        val = kv.Value;
+                    }
+                    else if (!fallbackLocalizationDict.TryGetValue(kv.Key, out val))
+                    {
+                        val = kv.Key;
+                    }
+                    loc[kv.Key] = val;
+                }
+            }
+            else
+            {
+                foreach (var kv in localizationDict)
+                {
+                    loc[kv.Key] = kv.Value;
+                }
+            }
+        }
+
+        /// <summary>
+        /// Read all msgid from specified Portable Object file.
+        /// </summary>
+        /// <param name="fileAssetPath">Target Portable Object asset path.</param>
+        /// <returns><see cref="List{T}"/> of msgid.</returns>
+        private static List<string> ReadMsgIds(string fileAssetPath)
+        {
+            var msgIdList = new List<string>();
+            using (var reader = new StreamReader(fileAssetPath, Encoding.UTF8))
+            {
+                var sb = new StringBuilder();
+                var isReadingMsgId = false;
+
+                string line;
+                while ((line = reader.ReadLine()) != null)
+                {
+                    if (line.StartsWith("msgid ", StringComparison.Ordinal))
+                    {
+                        // If the previous msgid was not terminated.
+                        if (isReadingMsgId && sb.Length > 0)
+                        {
+                            msgIdList.Add(sb.ToString());
+                        }
+                        sb.Clear();
+
+                        isReadingMsgId = true;
+                        AppendQuotedString(sb, line, 6);
+                        continue;
+                    }
+
+                    if (!isReadingMsgId)
+                    {
+                        continue;
+                    }
+
+                    var trimmed = line.Trim();
+
+                    // Continuation of the msgid line
+                    if (IsQuotedString(trimmed))
+                    {
+                        AppendQuotedString(sb, trimmed, 0);
+                        continue;
+                    }
+
+                    // End of msgid
+                    isReadingMsgId = false;
+
+                    // msgid "" is a PO header
+                    if (sb.Length > 0)
+                    {
+                        msgIdList.Add(sb.ToString());
+                    }
+
+                    sb.Clear();
+                }
+
+                // EOF
+                if (isReadingMsgId && sb.Length > 0)
+                {
+                    msgIdList.Add(sb.ToString());
+                }
+            }
+
+            return msgIdList;
+        }
+
+        /// <summary>
+        /// Check whether the specified string is enclosed in double quotes.
+        /// </summary>
+        /// <param name="text">Target string.</param>
+        /// <returns>True if specified string is enclosed in double quotes, false otherwise.</returns>
+        private static bool IsQuotedString(string text)
+        {
+            var length = text.Length;
+            return length >= 2 && text[0] == '"' && text[length - 1] == '"';
+        }
+
+        /// <summary>
+        /// Decodes a PO string in the "..." format and adds it to the builder.
+        /// </summary>
+        /// <param name="sb"></param>
+        /// <param name="quotedText"></param>
+        /// <param name="offset"></param>
+        /// <exception cref="FormatException">Thrown when a PO file format error is detected.</exception>
+        private static void AppendQuotedString(StringBuilder sb, string quotedText, int offset)
+        {
+            var length = quotedText.Length;
+            unsafe
+            {
+                fixed (char* pQuotedText = quotedText)
+                {
+                    // Check the leading `"`.
+                    if (offset >= length || pQuotedText[offset] != '"')
+                    {
+                        throw new FormatException("Invalid PO string: " + quotedText);
+                    }
+                    // Check the tarailing `"`.
+                    var end = length - 1;
+                    if (end <= offset || pQuotedText[end] != '"')
+                    {
+                        throw new FormatException("Invalid PO string: " + quotedText);
+                    }
+                    // Scan excluding the outer `"`.
+                    for (int i = offset + 1; i < end; i++)
+                    {
+                        var c = pQuotedText[i];
+                        if (c != '\\')
+                        {
+                            sb.Append(c);
+                            continue;
+                        }
+
+                        i++;
+                        if (i >= end)
+                        {
+                            throw new FormatException("Invalid escape sequence: " + quotedText);
+                        }
+
+                        c = pQuotedText[i];
+                        switch (c)
+                        {
+                            case 'a':
+                                sb.Append('\a');
+                                break;
+                            case 'b':
+                                sb.Append('\b');
+                                break;
+                            case 'f':
+                                sb.Append('\f');
+                                break;
+                            case 'n':
+                                sb.Append('\n');
+                                break;
+                            case 'r':
+                                sb.Append('\r');
+                                break;
+                            case 't':
+                                sb.Append('\t');
+                                break;
+                            case 'v':
+                                sb.Append('\v');
+                                break;
+                            case '\\':
+                                sb.Append('\\');
+                                break;
+                            case '"':
+                                sb.Append('"');
+                                break;
+                            default:
+                                throw new FormatException("Unknown PO escape sequence: \\" + c);
+                        }
+                    }
+                }
+            }
+        }
+
+        /// <summary>
+        /// Pair of localization dictionary and the last modified time.
+        /// </summary>
+        private sealed class LocalizationCache
+        {
+            /// <summary>
+            /// <see cref="LocalizationAsset"/> instance.
+            /// </summary>
+            public Dictionary<string, string> LocalizationDict { get; } = new Dictionary<string, string>();
+            /// <summary>
+            /// File path.
+            /// </summary>
+            public string FilePath { get; set; }
+            /// <summary>
+            /// Last write time of <see cref="FilePath"/>.
+            /// </summary>
+            public DateTime LastWriteTime { get; set; }
+
+            /// <summary>
+            /// Initialize <see cref="FilePath"/> and <see cref="LastWriteTime"/>.
+            /// </summary>
+            /// <param name="filePath">File path.</param>
+            public LocalizationCache(string filePath)
+                : this(filePath, new FileInfo(filePath).LastWriteTime)
+            {
+            }
+
+            /// <summary>
+            /// Initialize <see cref="FilePath"/> and <see cref="LastWriteTime"/>.
+            /// </summary>
+            /// <param name="filePath">File path.</param>
+            /// <param name="lastWriteTime">Last write time of <paramref name="filePath"/>.</param>
+            public LocalizationCache(string filePath, DateTime lastWriteTime)
+            {
+                FilePath = filePath;
+                LastWriteTime = lastWriteTime;
+            }
+        }
+    }
+}

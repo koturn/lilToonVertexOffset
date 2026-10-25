@@ -1,0 +1,14 @@
+{
+  "packages": [
+    {
+      "versionFrom": "514eb3532e57f7c47b1e9b955003ec35",
+      "unityPackageBaseName": "lilToonVertexOffset",
+      "packageName": "com.koturn.liltoonvertexoffset",
+      "assets": [
+        {
+          "basePath": "Assets/koturn/lilToonVertexOffset"
+        }
+      ]
+    }
+  ]
+}

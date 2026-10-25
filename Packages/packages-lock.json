@@ -1,0 +1,16 @@
+{
+  "dependencies": {
+    "com.koturn.exporttools": {
+      "version": "file:../ThirdParty/UnityExportTools/Assets/koturn/ExportTools",
+      "depth": 0,
+      "source": "local",
+      "dependencies": {}
+    },
+    "jp.lilxyzw.liltoon": {
+      "version": "file:../ThirdParty/lilToon/Assets/lilToon",
+      "depth": 0,
+      "source": "local",
+      "dependencies": {}
+    }
+  }
+}

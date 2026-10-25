@@ -1,0 +1,15 @@
+msgid ""
+msgstr ""
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Language: zh-Hant\n"
+
+msgid "sCustomShaderTitle"
+msgstr "頂點偏移量"
+
+msgid "sCustomPropertyCategory"
+msgstr "頂點偏移量"
+
+msgid "sVertexOffset"
+msgstr "頂點偏移量"

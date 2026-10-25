@@ -1,0 +1,29 @@
+{
+  "name": "com.koturn.liltoonvertexoffset",
+  "version": "1.0.0",
+  "displayName": "lilToonVertexOffset",
+  "description": "A custom lilToon shader that allows you to offset vertex positions.",
+  "unity": "2019.4",
+  "license": "MIT",
+  "licensesUrl": "https://github.com/koturn/lilToonVertexOffset/blob/master/LICENSE",
+  "keywords": [
+    "lilToon",
+    "ScriptedImporter",
+    "Material",
+    "Custom shader"
+  ],
+  "dependencies": {
+    "jp.lilxyzw.liltoon": "1.4.0"
+  },
+  "author": {
+    "name": "koturn",
+    "url": "https://github.com/koturn"
+  },
+  "url" : "https://github.com/koturn/lilToonVertexOffset/releases/download/1.0.0/com.koturn.liltoonvertexoffset-1.0.0.zip?",
+  "legacyFolders": {
+    "Assets\\VertexOffset": "ff3e74b5b7e8ecd49bb687ee08c6aed0"
+  },
+  "vpmDependencies": {
+    "jp.lilxyzw.liltoon": ">=1.4.0"
+  }
+}
