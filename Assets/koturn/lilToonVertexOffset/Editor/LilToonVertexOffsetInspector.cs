@@ -32,6 +32,10 @@ namespace Koturn.LilToonVertexOffset.Editor
         /// A language name when the language file was last loaded.
         /// </summary>
         private static string prevLanguageName;
+        /// <summary>
+        /// Copy target material property dictionary.
+        /// </summary>
+        private static readonly Dictionary<string, MaterialProperty> copySourcePropertyDict = new Dictionary<string, MaterialProperty>();
 
         /// <summary>
         /// A flag indicating whether the language file needs to be loaded.
@@ -114,6 +118,7 @@ namespace Koturn.LilToonVertexOffset.Editor
 
             var titleLoc = GetLoc("sCustomShaderTitle");
             isShowCustomProperties = Foldout(titleLoc, titleLoc, isShowCustomProperties);
+            DrawMenuButton(_propertyList);
             if (!isShowCustomProperties)
             {
                 return;
@@ -122,6 +127,7 @@ namespace Koturn.LilToonVertexOffset.Editor
             using (new EditorGUILayout.VerticalScope(boxOuter))
             {
                 EditorGUILayout.LabelField(GetLoc("sCustomPropertyCategory"), customToggleFont);
+                DrawMenuButton(_propertyList);
                 using (new EditorGUILayout.VerticalScope(boxInnerHalf))
                 {
                     lilEditorGUI.LocalizedProperty(m_MaterialEditor, _vertexOffset);
@@ -474,6 +480,148 @@ namespace Koturn.LilToonVertexOffset.Editor
                 }
             }
             return false;
+        }
+
+        /// <summary>
+        /// Draw menu button.
+        /// </summary>
+        /// <param name="propertyList">Property list.</param>
+        /// <param name="helpUrl">URL</param>
+        private static void DrawMenuButton(List<MaterialProperty> propertyList, string helpUrl = null)
+        {
+            var position = GUILayoutUtility.GetLastRect();
+            position.x += position.width - 24.0f;
+            position.width = 24.0f;
+
+            if (!GUI.Button(position, EditorGUIUtility.IconContent("_Popup"), middleButton))
+            {
+                return;
+            }
+
+            var menu = new GenericMenu();
+            menu.AddItem(new GUIContent(GetLoc("sCopy")), false, userData => CopyProperties((List<MaterialProperty>)userData), propertyList);
+            menu.AddItem(new GUIContent(GetLoc("sPaste")), false, userData => PasteProperties((List<MaterialProperty>)userData, false), propertyList);
+            menu.AddItem(new GUIContent(GetLoc("sPasteWithTexture")), false, userData => PasteProperties((List<MaterialProperty>)userData, true), propertyList);
+#if UNITY_2019_3_OR_NEWER
+            menu.AddItem(new GUIContent(GetLoc("sReset")), false, userData => ResetProperties((List<MaterialProperty>)userData), propertyList);
+#endif  // UNITY_2019_3_OR_NEWER
+            if (!string.IsNullOrEmpty(helpUrl))
+            {
+                menu.AddItem(new GUIContent(GetLoc("sOpenManual")), false, userData => OpenHelpPage((string)userData), helpUrl);
+            }
+            menu.ShowAsContext();
+        }
+
+        /// <summary>
+        /// <para>Copy specified property list to <see cref="copySourcePropertyDict"/>.</para>
+        /// <para>This method is the callback method specified as the third argument of <see cref="GenericMenu.AddItem(GUIContent, bool, GenericMenu.MenuFunction2, object)"/>.</para>
+        /// </summary>
+        /// <param name="userData">Property list as <see cref="object"/>.</param>
+        /// <summary>
+        /// Copy specified property list to <see cref="copySourcePropertyDict"/>.
+        /// </summary>
+        /// <param name="propertyList">Property list.</param>
+        private static void CopyProperties(List<MaterialProperty> propertyList)
+        {
+            copySourcePropertyDict.Clear();
+            foreach (var prop in propertyList)
+            {
+                copySourcePropertyDict[prop.name] = prop;
+            }
+        }
+
+        /// <summary>
+        /// Paste specified property list to <see cref="copySourcePropertyDict"/>.
+        /// </summary>
+        /// <param name="propertyList">The property list paste.</param>
+        /// <param name="shouldCopyTex">True to copy texture properties; false otherwise.</param>
+        private static void PasteProperties(List<MaterialProperty> propertyList, bool shouldCopyTex)
+        {
+            foreach (var prop in propertyList)
+            {
+                if (!copySourcePropertyDict.TryGetValue(prop.name, out var sourceProp))
+                {
+                    continue;
+                }
+
+                switch (prop.type)
+                {
+                    case MaterialProperty.PropType.Color:
+                        prop.colorValue = sourceProp.colorValue;
+                        break;
+                    case MaterialProperty.PropType.Vector:
+                        prop.vectorValue = sourceProp.vectorValue;
+                        break;
+                    case MaterialProperty.PropType.Float:
+                    case MaterialProperty.PropType.Range:
+                        prop.floatValue = sourceProp.floatValue;
+                        break;
+                    case MaterialProperty.PropType.Texture:
+                        if (shouldCopyTex)
+                        {
+                            prop.textureValue = sourceProp.textureValue;
+                            prop.textureScaleAndOffset = sourceProp.textureScaleAndOffset;
+                        }
+                        break;
+                    case MaterialProperty.PropType.Int:
+                        prop.intValue = sourceProp.intValue;
+                        break;
+                }
+            }
+        }
+
+#if UNITY_2019_3_OR_NEWER
+        /// <summary>
+        /// Reset sepecifield properties to its default values.
+        /// </summary>
+        /// <param name="propertyList">Property list to reset the values.</param>
+        private static void ResetProperties(List<MaterialProperty> propertyList)
+        {
+            foreach (var prop in propertyList)
+            {
+                var shader = (prop.targets[0] as Material)?.shader;
+                if (shader == null)
+                {
+                    continue;
+                }
+
+                var propID = shader.FindPropertyIndex(prop.name);
+                if (propID == -1)
+                {
+                    continue;
+                }
+
+                switch (prop.type)
+                {
+                    case MaterialProperty.PropType.Color:
+                        prop.colorValue = shader.GetPropertyDefaultVectorValue(propID);
+                        break;
+                    case MaterialProperty.PropType.Vector:
+                        prop.vectorValue = shader.GetPropertyDefaultVectorValue(propID);
+                        break;
+                    case MaterialProperty.PropType.Float:
+                    case MaterialProperty.PropType.Range:
+                        prop.floatValue = shader.GetPropertyDefaultFloatValue(propID);
+                        break;
+                    case MaterialProperty.PropType.Texture:
+                        prop.textureValue = null;
+                        prop.textureScaleAndOffset = new Vector4(1.0f, 1.0f, 0.0f, 0.0f);
+                        break;
+                    case MaterialProperty.PropType.Int:
+                        prop.intValue = shader.GetPropertyDefaultIntValue(propID);
+                        break;
+                }
+            }
+        }
+#endif  // UNITY_2019_3_OR_NEWER
+
+        /// <summary>
+        /// Open help page.
+        /// </summary>
+        /// <param name="url">Help page URL.</param>
+        private static void OpenHelpPage(string url)
+        {
+            Application.OpenURL(url);
         }
 
         /// <summary>
